@@ -1,10 +1,10 @@
 import pyodbc
-# connection
+
 def get_db_connection():
-    conn_str = (
+    conn = (
         r"Driver={ODBC Driver 17 for SQL Server};"
-        r"Server=.\SQLEXPRESS;" 
+        r"Server=DESKTOP-I4DJAG3\SQLEXPRESS;"
         r"Database=flower_store;"
         r"Trusted_Connection=yes;"
     )
-    return pyodbc.connect(conn_str)
+    return pyodbc.connect(conn)
