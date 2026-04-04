@@ -1,151 +1,399 @@
 from flask import Blueprint, request, jsonify
-from datetime import datetime, timedelta
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+from datetime import datetime
 from db import get_db_connection
+
 reminders_bp = Blueprint("reminders", __name__)
-# Occasion system - Add reminder
+
+NOTIFICATION_TEMPLATE = "Reminder: Your occasion '{name}' is coming up on {date}. Order a bouquet now!"
+
+
+#HELPER: admin guard
+def require_admin():
+    claims = get_jwt()
+    if claims.get("role") != "Admin":
+        return False, (jsonify({"error": "Admin access required"}), 403)
+    return True, None
+
+
+#ADD REMINDER 
 @reminders_bp.route("/reminders", methods=["POST"])
 @jwt_required()
 def add_reminder():
     user_id = int(get_jwt_identity())
     data = request.get_json()
-    if not data:
-        return jsonify({"error": "Request body is empty"}), 400
-    if isinstance(data, list):
-        data = data[0] if len(data) > 0 else {}
-    occ_name = data.get("occasion_name")
-    occ_date = data.get("occasion_date")
+
+    if not data or not isinstance(data, dict):
+        return jsonify({"error": "Request body must be a JSON object"}), 400
+
+    occ_name    = data.get("occasion_name", "").strip()
+    occ_date    = data.get("occasion_date")
     days_before = data.get("days_before", 1)
+
     if not occ_name or not occ_date:
-        return jsonify({
-            "error": "Missing required fields: occasion_name and occasion_date"
-        }), 400
+        return jsonify({"error": "occasion_name and occasion_date are required"}), 400
+
+    #Validate date format
+    try:
+        parsed_date = datetime.strptime(occ_date, "%Y-%m-%d").date()
+        if parsed_date < datetime.today().date():
+            return jsonify({"error": "occasion_date must be in the future"}), 400
+    except ValueError:
+        return jsonify({"error": "occasion_date must be in YYYY-MM-DD format"}), 400
+
+    # Validate days_before
+    if not isinstance(days_before, int) or days_before < 1:
+        return jsonify({"error": "days_before must be a positive integer"}), 400
+
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
+        #Duplicate check
         cursor.execute("""
-            INSERT INTO Occasion_Reminders
-            (UserID, OccasionName, OccasionDate, DaysBefore)
+            SELECT ReminderID FROM Occasion_Reminders
+            WHERE UserID = ? AND OccasionName = ? AND OccasionDate = ? AND IsActive = 1
+        """, (user_id, occ_name, occ_date))
+        if cursor.fetchone():
+            return jsonify({"error": "A reminder for this occasion already exists"}), 409
+
+        cursor.execute("""
+            INSERT INTO Occasion_Reminders (UserID, OccasionName, OccasionDate, DaysBefore)
+            OUTPUT INSERTED.ReminderID
             VALUES (?, ?, ?, ?)
         """, (user_id, occ_name, occ_date, days_before))
+        reminder_id = cursor.fetchone()[0]
         conn.commit()
         return jsonify({
-            "message": "Reminder created successfully"
+            "message": "Reminder created successfully",
+            "reminder_id": reminder_id       
         }), 201
+
     except Exception as e:
         conn.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Could not create reminder"}), 500
     finally:
+        cursor.close()
         conn.close()
 
-#user all riminders view 
-# View reminders with smart suggestions
+
+# GET MY REMINDERS (with smart suggestions)
 @reminders_bp.route("/reminders", methods=["GET"])
 @jwt_required()
 def get_my_reminders():
     user_id = int(get_jwt_identity())
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT ReminderID, OccasionName, OccasionDate, DaysBefore
-        FROM Occasion_Reminders
-        WHERE UserID = ? AND IsActive = 1
-    """, (user_id,))
-    rows = cursor.fetchall()
-    result = []
-    for row in rows:
-        reminder_id = row[0]
-        occ_name = row[1]
-        occ_date = row[2]
-        days_before = row[3]
-        # smart keyword mapping
-        search_term = f"%{occ_name}%" 
-        # get random suggestion
-        cursor.execute("""
-            SELECT TOP 3 FlowerID, FlowerName, Price, ImageURL
-            FROM Flower
-            WHERE (Occasion LIKE ? OR FlowerName LIKE ?)
-            AND IsActive = 1
-            AND Stock > 0
-            ORDER BY NEWID() -- اختيار عشوائي لضمان التجديد للمستخدم
-        """, (search_term, search_term))
-        
-        suggestions_rows = cursor.fetchall()
-        suggestions_list = []
-        for sug in suggestions_rows:
-            suggestions_list.append({
-                "flower_id": sug[0],
-                "flower_name": sug[1],
-                "price": float(sug[2]),
-                "image_url": sug[3]
-            })
-        result.append({
-            "reminder_id": reminder_id,
-            "occasion": occ_name,
-            "date": occ_date.strftime("%Y-%m-%d") if occ_date else None,
-            "days_before": days_before,
-            "smart_suggestions": suggestions_list if suggestions_list else "Check our new arrivals for this event!"
-        })
-    conn.close()
-    return jsonify(result)
-#notification 
-@reminders_bp.route("/reminders/check-notifications", methods=["GET"])
-def check_reminders_and_notify():
+
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
         cursor.execute("""
-            SELECT r.UserID, r.OccasionName, r.OccasionDate, u.Email
+            SELECT ReminderID, OccasionName, OccasionDate, DaysBefore
+            FROM Occasion_Reminders
+            WHERE UserID = ? AND IsActive = 1
+            ORDER BY OccasionDate ASC
+        """, (user_id,))
+        rows = cursor.fetchall()
+
+        result = []
+        for row in rows:
+            reminder_id, occ_name, occ_date, days_before = row
+            search_term = f"%{occ_name}%"
+
+            cursor.execute("""
+                SELECT TOP 3 FlowerID, FlowerName, Price, ImageURL
+                FROM Flower
+                WHERE (Occasion LIKE ? OR FlowerName LIKE ?)
+                AND IsActive = 1 AND Stock > 0
+                ORDER BY NEWID()
+            """, (search_term, search_term))
+            suggestions = cursor.fetchall()
+
+            result.append({
+                "reminder_id": reminder_id,
+                "occasion":    occ_name,
+                "date":        occ_date.strftime("%Y-%m-%d") if occ_date else None,
+                "days_before": days_before,
+                "smart_suggestions": [       
+                    {
+                        "flower_id":   s[0],
+                        "flower_name": s[1],
+                        "price":       float(s[2]),
+                        "image_url":   s[3]
+                    } for s in suggestions
+                ]
+            })
+
+        return jsonify(result), 200
+
+    except Exception as e:
+        return jsonify({"error": "Could not retrieve reminders"}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+#UPDATE REMINDER
+@reminders_bp.route("/reminders/<int:reminder_id>", methods=["PUT"])
+@jwt_required()
+def update_reminder(reminder_id):
+    user_id = int(get_jwt_identity())
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    allowed  = {"occasion_name", "occasion_date", "days_before"}
+    updates  = {k: v for k, v in data.items() if k in allowed}
+    if not updates:
+        return jsonify({"error": f"Updatable fields: {list(allowed)}"}), 400
+
+    # Validate fields if present
+    if "occasion_date" in updates:
+        try:
+            parsed = datetime.strptime(updates["occasion_date"], "%Y-%m-%d").date()
+            if parsed < datetime.today().date():
+                return jsonify({"error": "occasion_date must be in the future"}), 400
+        except ValueError:
+            return jsonify({"error": "occasion_date must be YYYY-MM-DD"}), 400
+
+    if "days_before" in updates:
+        if not isinstance(updates["days_before"], int) or updates["days_before"] < 1:
+            return jsonify({"error": "days_before must be a positive integer"}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # Verify ownership
+        cursor.execute("""
+            SELECT ReminderID FROM Occasion_Reminders
+            WHERE ReminderID = ? AND UserID = ? AND IsActive = 1
+        """, (reminder_id, user_id))
+        if not cursor.fetchone():
+            return jsonify({"error": "Reminder not found"}), 404
+
+        set_clause = ", ".join(f"{k} = ?" for k in updates)
+        values = list(updates.values()) + [reminder_id]
+        cursor.execute(f"""
+            UPDATE Occasion_Reminders SET {set_clause}
+            WHERE ReminderID = ?
+        """, values)
+        conn.commit()
+        return jsonify({"message": "Reminder updated successfully"}), 200
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": "Could not update reminder"}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# DELETE (DEACTIVATE) REMINDER 
+@reminders_bp.route("/reminders/<int:reminder_id>", methods=["DELETE"])
+@jwt_required()
+def delete_reminder(reminder_id):
+    user_id = int(get_jwt_identity())
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT ReminderID FROM Occasion_Reminders
+            WHERE ReminderID = ? AND UserID = ? AND IsActive = 1
+        """, (reminder_id, user_id))
+        if not cursor.fetchone():
+            return jsonify({"error": "Reminder not found"}), 404
+
+        cursor.execute("""
+            UPDATE Occasion_Reminders SET IsActive = 0
+            WHERE ReminderID = ?
+        """, (reminder_id,))
+        conn.commit()
+        return jsonify({"message": "Reminder deleted"}), 200
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": "Could not delete reminder"}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+#  CHECK & SEND NOTIFICATIONS (admin/cron only)
+@reminders_bp.route("/reminders/check-notifications", methods=["POST"])
+@jwt_required()
+def check_reminders_and_notify():
+    is_admin, err = require_admin()
+    if not is_admin:
+        return err
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT r.ReminderID, r.UserID, r.OccasionName, r.OccasionDate, u.Email
             FROM Occasion_Reminders r
             JOIN Users u ON r.UserID = u.UserID
-            WHERE r.IsActive = 1 
+            WHERE r.IsActive = 1
+            AND r.IsNotified = 0                  
             AND CAST(DATEADD(day, -r.DaysBefore, r.OccasionDate) AS DATE) = CAST(GETDATE() AS DATE)
         """)
-        
-        pending_notifications = cursor.fetchall()
+        pending = cursor.fetchall()
+
         sent_count = 0
-        for row in pending_notifications:
-            user_id, occ_name, occ_date, email = row
-            message = f"تذكير: مناسبة {occ_name} اقتربت! موعدها في {occ_date.strftime('%Y-%m-%d')}. اطلب باقة ورد الآن!"
+        for row in pending:
+            reminder_id, user_id, occ_name, occ_date, email = row
+
+            #English template, not hardcoded Arabic
+            message = NOTIFICATION_TEMPLATE.format(
+                name=occ_name,
+                date=occ_date.strftime("%Y-%m-%d")
+            )
             cursor.execute("""
-                INSERT INTO Notifications (UserID, Message)
-                VALUES (?, ?)
+                INSERT INTO Notifications (UserID, Message, IsRead)
+                VALUES (?, ?, 0)
             """, (user_id, message))
+
+            #Mark as notified so it doesn't fire again today
+            cursor.execute("""
+                UPDATE Occasion_Reminders SET IsNotified = 1
+                WHERE ReminderID = ?
+            """, (reminder_id,))
+
             sent_count += 1
-            conn.commit()
+
+        conn.commit()      
         return jsonify({
             "status": "success",
-            "notifications_sent": sent_count,
-            "message": f"تم إرسال {sent_count} تنبيه بنجاح"
+            "notifications_sent": sent_count
         }), 200
+
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        conn.rollback()
+        return jsonify({"error": "Notification check failed"}), 500
     finally:
+        cursor.close()
         conn.close()
-#showing  notifications
+
+
+#GET USER NOTIFICATIONS
 @reminders_bp.route("/notifications", methods=["GET"])
 @jwt_required()
 def get_user_notifications():
-    user_id = int(get_jwt_identity())
+    user_id  = int(get_jwt_identity())
+    page     = request.args.get("page", 1, type=int)      # pagination
+    per_page = request.args.get("per_page", 20, type=int)
+    offset   = (page - 1) * per_page
+
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("""
-        SELECT NotificationID, Message, IsRead, CreatedAt 
-        FROM Notifications 
-        WHERE UserID = ? 
-        ORDER BY CreatedAt DESC
-    """, (user_id,))
-    rows = cursor.fetchall()
-    notifications = []
-    for row in rows:
-        notifications.append({
-            "id": row[0],
-            "message": row[1],
-            "is_read": row[2],
-            "date": row[3].strftime("%Y-%m-%d %H:%M")
-        })
-    
-    conn.close()
-    return jsonify(notifications) 
+    try:
+        cursor.execute("""
+            SELECT NotificationID, Message, IsRead, CreatedAt
+            FROM Notifications
+            WHERE UserID = ?
+            ORDER BY CreatedAt DESC
+            OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+        """, (user_id, offset, per_page))
+        rows = cursor.fetchall()
 
-        
+        return jsonify({
+            "page": page,
+            "per_page": per_page,
+            "notifications": [
+                {
+                    "id":      row[0],
+                    "message": row[1],
+                    "is_read": bool(row[2]),
+                    "date":    row[3].strftime("%Y-%m-%d %H:%M") if row[3] else None
+                } for row in rows
+            ]
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": "Could not retrieve notifications"}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# MARK NOTIFICATION AS READ
+@reminders_bp.route("/notifications/<int:notification_id>/read", methods=["PUT"])
+@jwt_required()
+def mark_notification_read(notification_id):
+    user_id = int(get_jwt_identity())
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT NotificationID FROM Notifications
+            WHERE NotificationID = ? AND UserID = ?
+        """, (notification_id, user_id))
+        if not cursor.fetchone():
+            return jsonify({"error": "Notification not found"}), 404
+
+        cursor.execute("""
+            UPDATE Notifications SET IsRead = 1
+            WHERE NotificationID = ?
+        """, (notification_id,))
+        conn.commit()
+        return jsonify({"message": "Notification marked as read"}), 200
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": "Could not update notification"}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# UNREAD NOTIFICATION COUNT 
+@reminders_bp.route("/notifications/unread-count", methods=["GET"])
+@jwt_required()
+def unread_count():
+    user_id = int(get_jwt_identity())
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT COUNT(*) FROM Notifications
+            WHERE UserID = ? AND IsRead = 0
+        """, (user_id,))
+        count = cursor.fetchone()[0]
+        return jsonify({"unread_count": count}), 200
+
+    except Exception as e:
+        return jsonify({"error": "Could not retrieve count"}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# DELETE NOTIFICATION
+@reminders_bp.route("/notifications/<int:notification_id>", methods=["DELETE"])
+@jwt_required()
+def delete_notification(notification_id):
+    user_id = int(get_jwt_identity())
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT NotificationID FROM Notifications
+            WHERE NotificationID = ? AND UserID = ?
+        """, (notification_id, user_id))
+        if not cursor.fetchone():
+            return jsonify({"error": "Notification not found"}), 404
+
+        cursor.execute("""
+            DELETE FROM Notifications WHERE NotificationID = ?
+        """, (notification_id,))
+        conn.commit()
+        return jsonify({"message": "Notification deleted"}), 200
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": "Could not delete notification"}), 500
+    finally:
+        cursor.close()
+        conn.close()

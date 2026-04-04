@@ -1,119 +1,131 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from db import get_db_connection
+
 cart_bp = Blueprint("cart", __name__)
 
-#get or create cart
-@cart_bp.route("/cart/get-or-create", methods=["POST"])
-def get_or_create_cart():
-    data = request.json
-    user_id = data["user_id"]
-    conn = get_db_connection()
-    cursor = conn.cursor()
+
+#get active cart ID for user
+def get_active_cart_id(cursor, user_id):
     cursor.execute("""
-        SELECT CartID 
-        FROM Cart 
+        SELECT CartID FROM Cart 
         WHERE UserID = ? AND IsActive = 1
     """, (user_id,))
     cart = cursor.fetchone()
-    #cart already exisist 
-    if cart:
-        conn.close()
-        return jsonify({
-            "message": "Active cart found",
-            "cart_id": cart[0]
-        })
-    #creat new one
-    cursor.execute("""
-        INSERT INTO Cart (UserID)
-        VALUES (?)
-    """, (user_id,))
-    conn.commit()
-    cursor.execute("SELECT SCOPE_IDENTITY()")
-    new_cart_id = cursor.fetchone()[0]
-    conn.close()
-    return jsonify({
-        "message": "New cart created",
-        "cart_id": new_cart_id
-    })
-#add to cart
-@cart_bp.route("/cart/add", methods=["POST"])
-@jwt_required()
-def add_to_cart():
-    user_id = int(get_jwt_identity()) 
-    data = request.json
-    flower_id = data.get("flower_id")
-    quantity = data.get("quantity")
-    if not flower_id or not quantity:
-        return jsonify({"error": "Missing data"}), 400
+    return cart[0] if cart else None
+
+
+#GET OR CREATE CART
+@cart_bp.route("/cart/get-or-create", methods=["POST"])
+@jwt_required()                              
+def get_or_create_cart():
+    user_id = int(get_jwt_identity())       
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-	    #lookıng for an actıve cart 
+        cart_id = get_active_cart_id(cursor, user_id)
+        if cart_id:
+            return jsonify({"message": "Active cart found", "cart_id": cart_id}), 200
+
         cursor.execute("""
-            SELECT CartID FROM Cart 
-            WHERE UserID = ? AND IsActive = 1
+            INSERT INTO Cart (UserID, IsActive)
+            OUTPUT INSERTED.CartID
+            VALUES (?, 1)
         """, (user_id,))
-        cart = cursor.fetchone()
-         # creat one if there is not
-        if not cart:
+        cart_id = cursor.fetchone()[0]
+        conn.commit()
+        return jsonify({"message": "New cart created", "cart_id": cart_id}), 201
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": "Could not get or create cart"}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# ADD TO CART
+@cart_bp.route("/cart/add", methods=["POST"])
+@jwt_required()
+def add_to_cart():
+    user_id = int(get_jwt_identity())
+    data = request.json
+    flower_id = data.get("flower_id")
+    quantity = data.get("quantity")
+
+    if not flower_id or not quantity:
+        return jsonify({"error": "flower_id and quantity are required"}), 400
+    if not isinstance(quantity, int) or quantity <= 0:   # quantity guard
+        return jsonify({"error": "Quantity must be a positive integer"}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # Stock check before adding
+        cursor.execute("""
+            SELECT Stock FROM Flower WHERE FlowerID = ?
+        """, (flower_id,))
+        flower = cursor.fetchone()
+        if not flower:
+            return jsonify({"error": "Flower not found"}), 404
+        if flower[0] < quantity:
+            return jsonify({"error": f"Only {flower[0]} items in stock"}), 400
+
+        cart_id = get_active_cart_id(cursor, user_id)
+        if not cart_id:
             cursor.execute("""
                 INSERT INTO Cart (UserID, IsActive)
                 OUTPUT INSERTED.CartID
                 VALUES (?, 1)
             """, (user_id,))
             cart_id = cursor.fetchone()[0]
-        else:
-            cart_id = cart[0]
 
         cursor.execute("""
             SELECT Quantity FROM CartItems 
             WHERE CartID = ? AND FlowerID = ?
         """, (cart_id, flower_id))
-        existing_item = cursor.fetchone()
-         # updating the amount
-        if existing_item:
-            new_quantity = existing_item[0] + int(quantity)
+        existing = cursor.fetchone()
+
+        if existing:
+            new_qty = existing[0] + quantity
+            if new_qty > flower[0]:               # stock check against total
+                return jsonify({"error": f"Only {flower[0]} items in stock"}), 400
             cursor.execute("""
                 UPDATE CartItems SET Quantity = ? 
                 WHERE CartID = ? AND FlowerID = ?
-            """, (new_quantity, cart_id, flower_id))
+            """, (new_qty, cart_id, flower_id))
             message = "Quantity updated"
         else:
-		    #new prodect is added
             cursor.execute("""
                 INSERT INTO CartItems (CartID, FlowerID, Quantity) 
                 VALUES (?, ?, ?)
             """, (cart_id, flower_id, quantity))
             message = "Item added to cart"
+
         conn.commit()
-        return jsonify({"message": message, "cart_id": cart_id})
+        return jsonify({"message": message, "cart_id": cart_id}), 200
+
     except Exception as e:
         conn.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Could not add item to cart"}), 500
     finally:
+        cursor.close()
         conn.close()
-# view cart
+
+
+#VIEW CART
 @cart_bp.route("/cart", methods=["GET"])
 @jwt_required()
 def view_cart():
-    user_id = get_jwt_identity()
+    user_id = int(get_jwt_identity())     
+
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("""
-            SELECT CartID
-            FROM Cart
-            WHERE UserID = ? AND IsActive = 1
-        """, (user_id,))
-        cart = cursor.fetchone()
-        if not cart:
-            return jsonify({
-                "items": [],
-                "total_price": 0,
-                "message": "No active cart found"
-            }), 200
-        cart_id = cart[0]
+        cart_id = get_active_cart_id(cursor, user_id)
+        if not cart_id:
+            return jsonify({"items": [], "total_price": 0, "message": "No active cart found"}), 200
+
         cursor.execute("""
             SELECT f.FlowerID, f.FlowerName, f.Price, ci.Quantity, f.ImageURL
             FROM CartItems ci
@@ -121,11 +133,11 @@ def view_cart():
             WHERE ci.CartID = ?
         """, (cart_id,))
         rows = cursor.fetchall()
+
         cart_items = []
-        total_price = 0
+        total_price = 0.0
         for row in rows:
-            price = float(row[2]) 
-            quantity = row[3]
+            price, quantity = float(row[2]), row[3]
             item_total = price * quantity
             total_price += item_total
             cart_items.append({
@@ -133,66 +145,225 @@ def view_cart():
                 "flower_name": row[1],
                 "price": price,
                 "quantity": quantity,
-                "item_total": float(item_total),
-                "image_url": row[4] 
+                "item_total": round(item_total, 2),
+                "image_url": row[4]
             })
+
         return jsonify({
             "cart_id": cart_id,
             "items": cart_items,
-            "total_price": float(total_price)
+            "total_price": round(total_price, 2)
         }), 200
+
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Could not retrieve cart"}), 500
     finally:
+        cursor.close()
         conn.close()
 
-# Payment Method
-@cart_bp.route("/cart/payment-method", methods=["POST"])
-@jwt_required()
-def set_payment_method():
-    current_user_id = int(get_jwt_identity())
-    data = request.json
-    cart_id = data.get("cart_id")
-    method = data.get("method") 
-    if method not in ['Visa', 'PayPal', 'Cash']:
-        return jsonify({"error": "Invalid payment method"}), 400
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE Cart SET PaymentMethod = ? WHERE CartID = ? AND UserID = ?", (method, cart_id, current_user_id))
-    conn.commit()
-    conn.close()
-    return jsonify({"message": f"Payment method set to {method}"})
 
-# 5. Final Checkout (تم دمج المنطق وتصحيحه)
-@cart_bp.route("/cart/checkout", methods=["POST"])
+#UPDATE ITEM QUANTITY
+@cart_bp.route("/cart/update", methods=["PUT"])
 @jwt_required()
-def final_checkout():
-    current_user_id = int(get_jwt_identity())
+def update_cart_item():
+    user_id = int(get_jwt_identity())
     data = request.json
-    cart_id = data.get("cart_id")
-    if not cart_id:
-        return jsonify({"error": "Missing cart_id"}), 400
+    flower_id = data.get("flower_id")
+    quantity = data.get("quantity")
+
+    if not flower_id or quantity is None:
+        return jsonify({"error": "flower_id and quantity are required"}), 400
+    if not isinstance(quantity, int) or quantity < 0:
+        return jsonify({"error": "Quantity must be 0 or more (0 removes the item)"}), 400
+
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-	    #get payment method
-        cursor.execute(
-            "SELECT PaymentMethod FROM Cart WHERE CartID = ? AND IsActive = 1 AND UserID = ? ",
-            (cart_id, current_user_id)
-        )
+        cart_id = get_active_cart_id(cursor, user_id)
+        if not cart_id:
+            return jsonify({"error": "No active cart found"}), 404
+
+        if quantity == 0:
+            cursor.execute("""
+                DELETE FROM CartItems WHERE CartID = ? AND FlowerID = ?
+            """, (cart_id, flower_id))
+            message = "Item removed from cart"
+        else:
+            # Stock check
+            cursor.execute("SELECT Stock FROM Flower WHERE FlowerID = ?", (flower_id,))
+            flower = cursor.fetchone()
+            if not flower:
+                return jsonify({"error": "Flower not found"}), 404
+            if flower[0] < quantity:
+                return jsonify({"error": f"Only {flower[0]} items in stock"}), 400
+
+            cursor.execute("""
+                UPDATE CartItems SET Quantity = ?
+                WHERE CartID = ? AND FlowerID = ?
+            """, (quantity, cart_id, flower_id))
+            message = "Quantity updated"
+
+        conn.commit()
+        return jsonify({"message": message}), 200
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": "Could not update cart"}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+#REMOVE ITEM FROM CART
+@cart_bp.route("/cart/remove", methods=["DELETE"])
+@jwt_required()
+def remove_from_cart():
+    user_id = int(get_jwt_identity())
+    data = request.json
+    flower_id = data.get("flower_id")
+
+    if not flower_id:
+        return jsonify({"error": "flower_id is required"}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cart_id = get_active_cart_id(cursor, user_id)
+        if not cart_id:
+            return jsonify({"error": "No active cart found"}), 404
+
+        cursor.execute("""
+            DELETE FROM CartItems WHERE CartID = ? AND FlowerID = ?
+        """, (cart_id, flower_id))
+        conn.commit()
+        return jsonify({"message": "Item removed from cart"}), 200
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": "Could not remove item"}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# CLEAR CART 
+@cart_bp.route("/cart/clear", methods=["DELETE"])
+@jwt_required()
+def clear_cart():
+    user_id = int(get_jwt_identity())
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cart_id = get_active_cart_id(cursor, user_id)
+        if not cart_id:
+            return jsonify({"error": "No active cart found"}), 404
+
+        cursor.execute("DELETE FROM CartItems WHERE CartID = ?", (cart_id,))
+        conn.commit()
+        return jsonify({"message": "Cart cleared"}), 200
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": "Could not clear cart"}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# SET PAYMENT METHOD
+@cart_bp.route("/cart/payment-method", methods=["POST"])
+@jwt_required()
+def set_payment_method():
+    user_id = int(get_jwt_identity())
+    data = request.json
+    cart_id = data.get("cart_id")
+    method = data.get("method")
+
+    if not cart_id:
+        return jsonify({"error": "cart_id is required"}), 400
+    if method not in ["Visa", "PayPal", "Cash"]:
+        return jsonify({"error": "Invalid payment method"}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        #Verify cart belongs to this user
+        cursor.execute("""
+            SELECT CartID FROM Cart 
+            WHERE CartID = ? AND UserID = ? AND IsActive = 1
+        """, (cart_id, user_id))
+        if not cursor.fetchone():
+            return jsonify({"error": "Cart not found"}), 404
+
+        cursor.execute("""
+            UPDATE Cart SET PaymentMethod = ? 
+            WHERE CartID = ? AND UserID = ?
+        """, (method, cart_id, user_id))
+        conn.commit()
+        return jsonify({"message": f"Payment method set to {method}"}), 200
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": "Could not set payment method"}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# CHECKOUT
+@cart_bp.route("/cart/checkout", methods=["POST"])
+@jwt_required()
+def final_checkout():
+    user_id = int(get_jwt_identity())
+    data = request.json
+    cart_id = data.get("cart_id")
+
+    if not cart_id:
+        return jsonify({"error": "cart_id is required"}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT PaymentMethod FROM Cart 
+            WHERE CartID = ? AND IsActive = 1 AND UserID = ?
+        """, (cart_id, user_id))
         res = cursor.fetchone()
         if not res:
             return jsonify({"error": "Cart not found"}), 404
-        
+
         payment_method = res[0]
-        # validate payment-method
+        if not payment_method:
+            return jsonify({"error": "Please set a payment method first"}), 400
+
+        #Payment validation 
         if payment_method == "Visa":
             if not data.get("card_number") or not data.get("cvv"):
                 return jsonify({"error": "Visa details missing"}), 400
         elif payment_method == "PayPal":
             if not data.get("paypal_email"):
                 return jsonify({"error": "PayPal email missing"}), 400
-        # calculate total price 
+
+        # Stock check before confirming order
+        cursor.execute("""
+            SELECT ci.FlowerID, ci.Quantity, f.Stock
+            FROM CartItems ci
+            JOIN Flower f ON ci.FlowerID = f.FlowerID
+            WHERE ci.CartID = ?
+        """, (cart_id,))
+        items = cursor.fetchall()
+
+        if not items:
+            return jsonify({"error": "Cart is empty"}), 400
+
+        for flower_id, qty, stock in items:
+            if stock < qty:
+                return jsonify({
+                    "error": f"Insufficient stock for flower ID {flower_id}"
+                }), 400
+
+        # Calculate total
         cursor.execute("""
             SELECT SUM(f.Price * ci.Quantity)
             FROM CartItems ci
@@ -200,16 +371,16 @@ def final_checkout():
             WHERE ci.CartID = ?
         """, (cart_id,))
         total = cursor.fetchone()[0]
-        if not total:
-            return jsonify({"error": "Cart is empty"}), 400
-        # create order
+
+        # Create order
         cursor.execute("""
             INSERT INTO Orders (UserID, TotalPrice, OrderDate, PaymentMethod)
             OUTPUT INSERTED.OrderID
             VALUES (?, ?, GETDATE(), ?)
-        """, (current_user_id, total, payment_method))
+        """, (user_id, total, payment_method))
         order_id = cursor.fetchone()[0]
-        # move cart items -> order details
+
+        # Move items to Order_Details
         cursor.execute("""
             INSERT INTO Order_Details (OrderID, FlowerID, Quantity, Price)
             SELECT ?, ci.FlowerID, ci.Quantity, f.Price
@@ -217,18 +388,30 @@ def final_checkout():
             JOIN Flower f ON ci.FlowerID = f.FlowerID
             WHERE ci.CartID = ?
         """, (order_id, cart_id))
-        # clear cart items
+
+        # Deduct stock
+        cursor.execute("""
+            UPDATE f SET f.Stock = f.Stock - ci.Quantity
+            FROM Flower f
+            JOIN CartItems ci ON ci.FlowerID = f.FlowerID
+            WHERE ci.CartID = ?
+        """, (cart_id,))
+
+        # Clear cart
         cursor.execute("DELETE FROM CartItems WHERE CartID = ?", (cart_id,))
         cursor.execute("UPDATE Cart SET IsActive = 0 WHERE CartID = ?", (cart_id,))
+
         conn.commit()
         return jsonify({
-            "message": "Order completed successfully!",
+            "message": "Order placed successfully!",
             "order_id": order_id,
-            "total_price": float(total),
+            "total_price": round(float(total), 2),
             "payment_method": payment_method
-        })
+        }), 200
+
     except Exception as e:
         conn.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Checkout failed"}), 500
     finally:
+        cursor.close()
         conn.close()
