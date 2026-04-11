@@ -3,7 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
 from werkzeug.security import generate_password_hash, check_password_hash
 from db import get_db_connection
 import re
-from utils import EMAIL_PATTERN, validate_password, is_valid_email
+from routes.utils import EMAIL_PATTERN, validate_password, is_valid_email
 
 user_bp = Blueprint("user", __name__)
 
@@ -214,22 +214,14 @@ def change_password():
 # ADMIN: DELETE USER
 @user_bp.route("/users/<int:user_id>", methods=["DELETE"])
 @jwt_required()
-@user_bp.route("/users/<int:user_id>", methods=["DELETE"])
-@jwt_required()
-def delete_user(user_id):
-    is_admin, err = require_admin()
-    if not is_admin:
-        return err
-    if user_id == int(get_jwt_identity()):
-        return jsonify({"error": "You cannot delete your own account"}), 400
-
-    conn = get_db_connection()
     
 def delete_user(user_id):
     is_admin, err = require_admin()
     if not is_admin:
         return err
 
+    if user_id == int(get_jwt_identity()):
+        return jsonify({"error": "You cannot delete your own account"}), 400
     conn = get_db_connection()
     cursor = conn.cursor()
     try:

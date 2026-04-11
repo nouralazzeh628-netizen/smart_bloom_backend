@@ -1,3 +1,5 @@
+import datetime
+
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import (
     create_access_token,
@@ -10,7 +12,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from db import get_db_connection
 import re
 import logging
-from utils import EMAIL_PATTERN, validate_password, is_valid_email
+from routes.utils import EMAIL_PATTERN, validate_password, is_valid_email
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -98,7 +100,8 @@ def login():
 
         access_token  = create_access_token(
             identity=str(user_id),
-            additional_claims={"role": role}
+            additional_claims={"role": role},
+            expires_delta= datetime.timedelta(minutes=120)
         )
         refresh_token = create_refresh_token(identity=str(user_id))
 
@@ -152,7 +155,7 @@ def logout():
     blocklist.add(get_jwt()["jti"])
 
     # Blocklist the refresh token if provided in body
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     refresh_jti = data.get("refresh_jti")
     if refresh_jti:
         blocklist.add(refresh_jti)

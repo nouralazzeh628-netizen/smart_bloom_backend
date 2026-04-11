@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login - Smart Bloom</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f6f6f6;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .card {
+            width: 360px;
+            background: white;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 {
+            margin-top: 0;
+            text-align: center;
+        }
+
+        input,
+        button {
+            width: 100%;
+            padding: 10px;
+            margin-top: 10px;
+            box-sizing: border-box;
+        }
+
+        button {
+            border: none;
+            background: #2d89ef;
+            color: white;
+            cursor: pointer;
+            border-radius: 6px;
+        }
+
+        button:hover {
+            background: #1d6fd1;
+        }
+
+        .msg {
+            margin-top: 12px;
+            font-size: 14px;
+            color: #c62828;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="card">
+        <h2>Login</h2>
+
+        <input type="email" id="email" placeholder="Enter email" />
+        <input type="password" id="password" placeholder="Enter password" />
+        <button onclick="loginUser()">Login</button>
+
+        <div class="msg" id="message"></div>
+    </div>
+
+    <script>
+        const BASE_URL = "http://127.0.0.1:5000";
+
+        async function loginUser() {
+            const email = document.getElementById("email").value.trim();
+            const password = document.getElementById("password").value.trim();
+            const message = document.getElementById("message");
+
+            message.textContent = "";
+
+            try {
+                const response = await fetch(`${BASE_URL}/login`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        email: email,
+                        password: password
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    message.textContent = data.error || "Login failed";
+                    return;
+                }
+
+                localStorage.setItem("access_token", data.access_token);
+                localStorage.setItem("refresh_token", data.refresh_token);
+
+                window.location.href = "flowers.html";
+            } catch (error) {
+                message.textContent = "Error: " + error.message;
+            }
+        }
+    </script>
+</body>
+
+</html>

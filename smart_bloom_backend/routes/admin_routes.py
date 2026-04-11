@@ -2,6 +2,18 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt
 from functools import wraps
 from db import get_db_connection
+from datetime import datetime
+
+def safe_format_date(val):
+    if val is None:
+        return None
+    if isinstance(val, str):
+        # parse if it's already a string
+        try:
+            val = datetime.fromisoformat(val)
+        except ValueError:
+            return val  # return as-is if unparseable
+    return val.strftime("%Y-%m-%d %H:%M:%S")
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -21,7 +33,7 @@ def admin_required(f):
     @jwt_required()
     def decorated_function(*args, **kwargs):
         claims = get_jwt()
-        if claims.get("role") != "Admin":      
+        if claims.get("role", "").lower() != "admin":
             return jsonify({"error": "Admin access required"}), 403
         return f(*args, **kwargs)
     return decorated_function
@@ -302,20 +314,19 @@ def get_dashboard_stats():
         """)
         low_stock_count = cursor.fetchone()[0]
 
-        #Orders by status breakdown
-        cursor.execute("""
-            SELECT Status, COUNT(*) FROM Orders GROUP BY Status
-        """)
-        status_rows = cursor.fetchall()
-        orders_by_status = {row[0]: row[1] for row in status_rows}
+    #     Orders by status breakdown
+    #    cursor.execute("""
+    #        SELECT Status, COUNT(*) FROM Orders GROUP BY Status """)
+    #     status_rows = cursor.fetchall()
+    #     orders_by_status = {row[0]: row[1] for row in status_rows}
 
         return jsonify({
             "total_orders":      order_data[0] or 0,
             "total_revenue":     round(float(order_data[1] or 0), 2),
             "total_customers":   user_count,
             "best_seller":       top_flower[0] if top_flower else None,
-            "low_stock_count":   low_stock_count,       
-            "orders_by_status":  orders_by_status      
+            "low_stock_count":   low_stock_count    
+            #"orders_by_status":  orders_by_status      
         }), 200
 
     except Exception:
@@ -324,11 +335,10 @@ def get_dashboard_stats():
         cursor.close()
         conn.close()
 
-
-#ADMIN: VIEW ALL ORDERS
+#ADMIN:GET ALL ORDERS
 @admin_bp.route("/admin/orders", methods=["GET"])
 @admin_required
-def admin_view_all_orders():
+def get_dashboard_statss():
     page     = request.args.get("page", 1, type=int)
     per_page = request.args.get("per_page", 20, type=int)
     offset   = (page - 1) * per_page
@@ -340,7 +350,7 @@ def admin_view_all_orders():
         if status:
             cursor.execute("""
                 SELECT o.OrderID, u.Email, o.TotalPrice, o.OrderDate,
-                       o.Status, o.PaymentMethod
+                     o.PaymentMethod
                 FROM Orders o
                 JOIN Users u ON o.UserID = u.UserID
                 WHERE o.Status = ?
@@ -350,7 +360,7 @@ def admin_view_all_orders():
         else:
             cursor.execute("""
                 SELECT o.OrderID, u.Email, o.TotalPrice, o.OrderDate,
-                       o.Status, o.PaymentMethod
+                        o.PaymentMethod
                 FROM Orders o
                 JOIN Users u ON o.UserID = u.UserID
                 ORDER BY o.OrderDate DESC
@@ -366,20 +376,22 @@ def admin_view_all_orders():
                     "order_id":       row[0],
                     "customer_email": row[1],
                     "total":          round(float(row[2] or 0), 2),
-                    "date":           row[3].strftime("%Y-%m-%d %H:%M:%S") if row[3] else None,
-                    "status":         row[4],           
-                    "payment_method": row[5]           
+                    "date":           safe_format_date(row[3]),  # ← fixed
+                    # "status":         row[4],
+                    "payment_method": row[4]
                 } for row in rows
             ]
         }), 200
 
-    except Exception:
-        return jsonify({"error": "Could not retrieve orders"}), 500
+    except Exception as e:
+        print(f"Dashboard orders error: {e}")  # ← now you'll see the real error
+        return jsonify({"error": "Could not retrieve orders", "detail": str(e)}), 500
     finally:
         cursor.close()
         conn.close()
+        
 
-
+       
 # ADMIN: GET SINGLE ORDER DETAILS 
 @admin_bp.route("/admin/orders/<int:order_id>", methods=["GET"])
 @admin_required
@@ -389,7 +401,7 @@ def admin_get_order(order_id):
     try:
         cursor.execute("""
             SELECT o.OrderID, u.Email, o.TotalPrice, o.OrderDate,
-                   o.Status, o.PaymentMethod,
+                    o.PaymentMethod,
                    od.FlowerID, f.FlowerName, od.Quantity, od.Price
             FROM Orders o
             JOIN Users u ON o.UserID = u.UserID
@@ -407,15 +419,14 @@ def admin_get_order(order_id):
             "customer_email": rows[0][1],
             "total_price":    round(float(rows[0][2] or 0), 2),
             "date":           rows[0][3].strftime("%Y-%m-%d %H:%M:%S") if rows[0][3] else None,
-            "status":         rows[0][4],
-            "payment_method": rows[0][5],
+            "payment_method": rows[0][4],
             "items": [
                 {
-                    "flower_id":   row[6],
-                    "flower_name": row[7],
-                    "quantity":    row[8],
-                    "price":       round(float(row[9]), 2),
-                    "item_total":  round(float(row[8] * row[9]), 2)
+                    "flower_id":   row[5],
+                    "flower_name": row[6],
+                    "quantity":    row[7],
+                    "price":       round(float(row[8]), 2),
+                    "item_total":  round(float(row[8] * row[7]), 2)
                 } for row in rows
             ]
         }

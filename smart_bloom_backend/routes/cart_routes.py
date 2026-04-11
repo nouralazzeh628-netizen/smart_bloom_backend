@@ -310,7 +310,6 @@ def set_payment_method():
         cursor.close()
         conn.close()
 
-
 # CHECKOUT
 @cart_bp.route("/cart/checkout", methods=["POST"])
 @jwt_required()
@@ -337,7 +336,7 @@ def final_checkout():
         if not payment_method:
             return jsonify({"error": "Please set a payment method first"}), 400
 
-        #Payment validation 
+        # Payment validation
         if payment_method == "Visa":
             if not data.get("card_number") or not data.get("cvv"):
                 return jsonify({"error": "Visa details missing"}), 400
@@ -372,12 +371,15 @@ def final_checkout():
         """, (cart_id,))
         total = cursor.fetchone()[0]
 
+        # Loyalty points rule
+        earned_points = int(float(total))   # 1 point for each 1 JOD
+
         # Create order
         cursor.execute("""
-            INSERT INTO Orders (UserID, TotalPrice, OrderDate, PaymentMethod)
+            INSERT INTO Orders (UserID, TotalPrice, OrderDate, PaymentMethod, LoyaltyPointsEarned)
             OUTPUT INSERTED.OrderID
-            VALUES (?, ?, GETDATE(), ?)
-        """, (user_id, total, payment_method))
+            VALUES (?, ?, GETDATE(), ?, ?)
+        """, (user_id, total, payment_method, earned_points))
         order_id = cursor.fetchone()[0]
 
         # Move items to Order_Details
@@ -391,11 +393,25 @@ def final_checkout():
 
         # Deduct stock
         cursor.execute("""
-            UPDATE f SET f.Stock = f.Stock - ci.Quantity
+            UPDATE f
+            SET f.Stock = f.Stock - ci.Quantity
             FROM Flower f
             JOIN CartItems ci ON ci.FlowerID = f.FlowerID
             WHERE ci.CartID = ?
         """, (cart_id,))
+
+        # Add loyalty points to user
+        cursor.execute("""
+            UPDATE Users
+            SET LoyaltyPoints = LoyaltyPoints + ?
+            WHERE UserID = ?
+        """, (earned_points, user_id))
+
+        # Save loyalty transaction history
+        cursor.execute("""
+            INSERT INTO LoyaltyTransactions (UserID, OrderID, Points, Type)
+            VALUES (?, ?, ?, 'earn')
+        """, (user_id, order_id, earned_points))
 
         # Clear cart
         cursor.execute("DELETE FROM CartItems WHERE CartID = ?", (cart_id,))
@@ -406,12 +422,45 @@ def final_checkout():
             "message": "Order placed successfully!",
             "order_id": order_id,
             "total_price": round(float(total), 2),
-            "payment_method": payment_method
+            "payment_method": payment_method,
+            "earned_points": earned_points
         }), 200
 
     except Exception as e:
         conn.rollback()
-        return jsonify({"error": "Checkout failed"}), 500
+        return jsonify({
+            "error": "Checkout failed",
+            "details": str(e)
+        }), 500
     finally:
         cursor.close()
         conn.close()
+        # GET USER LOYALTY POINTS
+@cart_bp.route("/loyalty/me", methods=["GET"])
+@jwt_required()
+def get_loyalty_points():
+    user_id = int(get_jwt_identity())
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            SELECT LoyaltyPoints FROM Users WHERE UserID = ?
+        """, (user_id,))
+        row = cursor.fetchone()
+
+        if not row:
+            return jsonify({"error": "User not found"}), 404
+
+        return jsonify({
+            "user_id": user_id,
+            "loyalty_points": row[0]
+        }), 200
+
+    except:
+        return jsonify({"error": "Failed to fetch loyalty points"}), 500
+    finally:
+        cursor.close()
+        conn.close()
+        
