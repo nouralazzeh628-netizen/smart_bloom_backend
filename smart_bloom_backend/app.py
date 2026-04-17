@@ -4,6 +4,8 @@ openai.api_key = "YOUR_API_KEY"
 
 from flask import Flask, jsonify, request
 from db import get_db_connection
+from apscheduler.schedulers.background import BackgroundScheduler
+from scheduler_jobs import check_reminders_and_notify_job
 
 # to protect admin roles we will use json web tokens
 from flask_jwt_extended import (
@@ -54,10 +56,14 @@ app.register_blueprint(admin_bp)
 app.register_blueprint(reminders_bp)
 app.register_blueprint(img_bp)
 
+# scheduler
+scheduler = BackgroundScheduler()
+scheduler.add_job(func=check_reminders_and_notify_job, trigger="cron", hour=9, minute=0)
+scheduler.start()
 # Main page
 @app.route("/")
 def home():
     return "Smart Bloom Store Backend is running "
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, use_reloader=False)

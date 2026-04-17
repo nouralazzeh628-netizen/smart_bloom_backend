@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en" id="html-tag">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shaghaf Store | Luxury Shop</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Cinzel:wght@400;600;700&family=Montserrat:wght@300;400;500;600;700&family=Cairo:wght@200;300;400;600&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&display=swap"
+        rel="stylesheet">
+
+    <link rel="stylesheet" href="chatbot.css">
+
+    <style>
+        :root {
+            --bg-body: #020202;
+            --text-main: #ffffff;
+            --accent: #2ecc71;
+            --glass: rgba(255, 255, 255, 0.05);
+            --card-border: rgba(255, 255, 255, 0.1);
+            --header-h: 85px;
+            --emerald-glow: rgba(46, 204, 113, 0.4);
+        }
+
+        body.light-mode {
+            --bg-body: #f4f7f5;
+            --text-main: #000000;
+            --glass: rgba(0, 0, 0, 0.03);
+            --card-border: rgba(0, 0, 0, 0.15);
+            --emerald-glow: rgba(46, 204, 113, 0.2);
+        }
+
+        body {
+            opacity: 0;
+            transition: opacity 0.4s ease, background 0.6s;
+            background-color: var(--bg-body);
+            font-family: 'Cormorant Garamond', serif;
+            overflow-x: hidden;
+            line-height: 1.6;
+        }
+
+        body.loaded {
+            opacity: 1;
+        }
+
+        /* --- Header: تطبيق دستور الهيدر الموحد (نسخة الـ Login) --- */
+        header {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            height: var(--header-h);
+            padding: 0 60px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 1000;
+            background: var(--glass);
+            backdrop-filter: blur(15px);
+            border-bottom: 1px solid var(--card-border);
+        }
+
+        .logo {
+            font-family: 'Great Vibes', cursive !important;
+            font-size: 42px !important;
+            color: var(--text-main);
+            text-decoration: none;
+            transition: 0.4s;
+        }
+
+        .logo:hover {
+            text-shadow: 0 0 15px var(--accent);
+            color: var(--accent);
+        }
+
+        .nav-right {
+            display: flex;
+            align-items: center;
+            gap: 30px;
+        }
+
+        nav ul {
+            display: flex;
+            list-style: none;
+            gap: 25px;
+            align-items: center;
+        }
+
+        nav ul li a {
+            text-decoration: none;
+            color: var(--text-main);
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 700;
+            transition: 0.3s;
+            position: relative;
+            padding: 5px 0;
+        }
+
+        nav ul li a::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            width: 0;
+            height: 2px;
+            background: var(--accent);
+            transition: 0.3s;
+            transform: translateX(-50%);
+        }
+
+        nav ul li a:hover::after {
+            width: 100%;
+        }
+
+        nav ul li a:hover {
+            color: var(--accent);
+        }
+
+        /* العربي حسب الدستور (تنحيف الخط) */
+        [lang="ar"] {
+            direction: rtl;
+            font-family: 'Cairo', sans-serif;
+        }
+
+        [lang="ar"] header {
+            font-family: 'Cairo', sans-serif;
+        }
+
+        /* تعديل كلمة شغف لتكون بخط Cairo 200 */
+        [lang="ar"] .logo {
+            font-family: 'Cairo', sans-serif !important;
+            font-weight: 200 !important;
+            font-size: 34px !important;
+        }
+
+        [lang="ar"] nav ul li a {
+            font-family: 'Cairo', sans-serif;
+            font-size: 17px;
+            font-weight: 300;
+            letter-spacing: 0;
+        }
+
+        [lang="ar"] .lang-btn {
+            font-family: 'Cairo', sans-serif;
+            font-size: 12px;
+            font-weight: 400;
+        }
+
+        /* أدوات الهيدر */
+        .profile-link {
+            color: var(--text-main);
+            font-size: 20px;
+            transition: 0.3s;
+            opacity: 0.8;
+            text-decoration: none;
+        }
+
+        .profile-link:hover {
+            color: var(--accent);
+            opacity: 1;
+        }
+
+        .lang-btn {
+            background: none;
+            border: 1px solid var(--card-border);
+            color: var(--text-main);
+            padding: 5px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: 0.3s;
+            opacity: 0.8;
+        }
+
+        .theme-switch {
+            display: inline-block;
+            height: 22px;
+            position: relative;
+            width: 48px;
+            margin-left: 5px;
+        }
+
+        .theme-switch input {
+            display: none;
+        }
+
+        .slider {
+            background-color: #1a3a2e;
+            bottom: 0;
+            cursor: pointer;
+            left: 0;
+            position: absolute;
+            right: 0;
+            top: 0;
+            transition: .4s;
+            border-radius: 34px;
+            border: 1px solid var(--card-border);
+        }
+
+        .slider:before {
+            background-color: #fff;
+            bottom: 3px;
+            content: "";
+            height: 14px;
+            left: 4px;
+            position: absolute;
+            transition: .4s;
+            width: 14px;
+            border-radius: 50%;
+            z-index: 5;
+        }
+
+        input:checked+.slider {
+            background-color: #bdc3c7;
+        }
+
+        input:checked+.slider:before {
+            transform: translateX(25px);
+        }
+
+        .slider i {
+            position: absolute;
+            top: 5px;
+            font-size: 10px;
+            z-index: 1;
+        }
+
+        .fa-moon {
+            left: 8px;
+            color: #fff;
+        }
+
+        .fa-sun {
+            right: 8px;
+            color: #1a1a1a;
+            opacity: 0;
+        }
+
+        input:checked+.slider .fa-sun {
+            opacity: 1;
+        }
+
+        /* --- باقي محتوى الصفحة (ممنوع اللمس) --- */
+        [lang="ar"] .main-flower-name,
+        [lang="ar"] .section-title,
+        [lang="ar"] .btn {
+            font-family: 'Cairo', sans-serif;
+            font-weight: 200;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        .section-title {
+            font-family: 'Cinzel', serif;
+            font-size: 1.8rem;
+            letter-spacing: 12px;
+            text-transform: uppercase;
+            text-align: center;
+            padding-top: 140px;
+            background: linear-gradient(to right, var(--text-main) 20%, #2ecc71 40%, #2ecc71 60%, var(--text-main) 80%);
+            background-size: 200% auto;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: shine 5s linear infinite;
+        }
+
+        @keyframes shine {
+            to {
+                background-position: 200% center;
+            }
+        }
+
+        .separator {
+            width: 30px;
+            height: 1px;
+            background: #2ecc71;
+            margin: 15px auto 30px;
+            box-shadow: 0 0 10px #2ecc71;
+        }
+
+        .flower-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 0 20px 50px;
+        }
+
+        .glass-card {
+            background: var(--glass);
+            backdrop-filter: blur(15px);
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            overflow: hidden;
+            transition: 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+            position: relative;
+            width: 100%;
+            text-align: center;
+            opacity: 0;
+            transform: translateY(20px);
+            animation: reveal 0.8s forwards;
+        }
+
+        @keyframes reveal {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .glass-card:hover {
+            border-color: var(--accent);
+            transform: translateY(-8px);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.5), 0 0 15px rgba(46, 204, 113, 0.2);
+        }
+
+        .wishlist-icon {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            z-index: 10;
+            color: #fff;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: 0.3s;
+            filter: drop-shadow(0 0 5px rgba(0, 0, 0, 0.5));
+        }
+
+        [lang="ar"] .wishlist-icon {
+            right: auto;
+            left: 12px;
+        }
+
+        .wishlist-icon:hover {
+            transform: scale(1.3);
+            color: #e74c3c;
+        }
+
+        .wishlist-icon.active {
+            color: #e74c3c;
+        }
+
+        .img-container {
+            width: 100%;
+            height: 150px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .img-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            filter: brightness(0.8);
+            transition: 1.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        .glass-card:hover .img-container img {
+            transform: scale(1.15);
+            filter: brightness(1.1);
+        }
+
+        .counter-overlay {
+            position: absolute;
+            bottom: 8px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.65);
+            backdrop-filter: blur(8px);
+            display: flex;
+            gap: 12px;
+            padding: 4px 14px;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 5;
+        }
+
+        .c-btn {
+            color: var(--accent);
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+            transition: 0.2s;
+        }
+
+        .c-btn:hover {
+            transform: scale(1.2);
+        }
+
+        .c-num {
+            color: #fff;
+            font-size: 12px;
+            min-width: 15px;
+            text-align: center;
+            font-weight: 700;
+        }
+
+        .content {
+            padding: 12px;
+        }
+
+        .main-flower-name {
+            font-family: 'Cinzel', serif;
+            font-size: 0.95rem;
+            letter-spacing: 2px;
+            margin-bottom: 8px;
+            color: var(--text-main);
+            font-weight: 700;
+            transition: 0.3s;
+        }
+
+        .price {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 12px;
+            color: var(--text-main);
+            font-family: 'Montserrat', sans-serif;
+        }
+
+        .color-selection {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            margin-bottom: 15px;
+        }
+
+        .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: 0.4s;
+        }
+
+        .dot.active {
+            transform: scale(1.5);
+            border-color: #fff;
+            box-shadow: 0 0 8px currentColor;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--card-border);
+            color: var(--text-main);
+            font-size: 0.65rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            cursor: pointer;
+            transition: 0.4s;
+            border-radius: 4px;
+        }
+
+        .btn:hover {
+            background: var(--accent);
+            color: #000;
+            box-shadow: 0 0 20px var(--accent);
+            transform: scale(1.02);
+        }
+
+        #toast {
+            visibility: hidden;
+            min-width: 140px;
+            background-color: var(--accent);
+            color: #000;
+            text-align: center;
+            border-radius: 25px;
+            padding: 10px 24px;
+            position: fixed;
+            z-index: 4000;
+            left: 50%;
+            bottom: 100px;
+            transform: translateX(-50%);
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 1px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+        }
+
+        #toast.show {
+            visibility: visible;
+            animation: fadein 0.5s, fadeout 0.5s 2.5s;
+        }
+    </style>
+</head>
+
+<body>
+    <script>
+        (function preLoad() {
+            if (localStorage.getItem('theme') === 'light') { document.body.classList.add('light-mode'); }
+        })();
+    </script>
+
+    <header>
+        <a href="index.html" class="logo" id="site-logo">Bloom Store</a>
+        <div class="nav-right">
+            <nav>
+                <ul id="nav-menu">
+                    <li><a href="firstpage.html" data-en="Home" data-ar="الرئيسية">Home</a></li>
+                    <li><a href="shop.html" data-en="Shop" data-ar="المتجر">Shop</a></li>
+                    <li><a href="wishlist.html" data-en="Wishlist" data-ar="المفضلة">Wishlist</a></li>
+                    <li><a href="cart.html" data-en="Cart" data-ar="السلة">Cart</a></li>
+                </ul>
+            </nav>
+
+            <div style="display: flex; align-items: center; gap: 20px;">
+                <a href="profile.html" class="profile-link"><i class="fas fa-user"></i></a>
+                <label class="theme-switch">
+                    <input type="checkbox" id="checkbox" onclick="toggleMode()" />
+                    <div class="slider"><i class="fas fa-moon"></i><i class="fas fa-sun"></i></div>
+                </label>
+                <button class="lang-btn" onclick="toggleLanguage()" id="langSwitcher">AR</button>
+            </div>
+        </div>
+    </header>
+
+    <h1 class="section-title" id="page-title">LET LOVE BLOOM</h1>
+    <div class="separator"></div>
+
+    <main class="flower-grid">
+        <div class="spinner" style="display: flex; align-items: center; justify-content: center; height: 100vh;">
+            <div class="lds-ring">
+                <div></div>
+                <div></div>
+                <div></div>
+                <div></div>
+            </div>
+        </div>
+        <script>
+            const fetchFlowers = async () => {
+                const response = await fetch('http://127.0.0.1:5000/flowers');
+                const data = await response.json();
+                const flowers = data['flowers'];
+                flowers.forEach((flower) => {
+                    const flowerCard = document.createElement('div');
+                    flowerCard.classList.add('glass-card');
+                    flowerCard.style.animationDelay = `${flowers.indexOf(flower) * 0.1}s`;
+
+                    const flowerHeartIcon = document.createElement('i');
+                    flowerHeartIcon.classList.add('fa-regular', 'fa-heart', 'wishlist-icon');
+                    flowerHeartIcon.onclick = () => addToWishlist(flower['flower_id'], flowerHeartIcon);
+
+                    const flowerImgContainer = document.createElement('div');
+                    flowerImgContainer.classList.add('img-container');
+
+                    const BASE = 'http://127.0.0.1:5000';
+                    const flowerImg = document.createElement('img');
+                    const imgSrc = flower.image_url ? `${BASE}/files/${flower.image_url}` : null;
+
+                    flowerImg.src = imgSrc;
+                    flowerImg.id = `display-${flower['flower_id']}`;
+                    flowerImgContainer.appendChild(flowerImg);
+
+                    const counterOverlay = document.createElement('div');
+                    counterOverlay.classList.add('counter-overlay');
+
+                    const counterBtnDec = document.createElement('span');
+                    counterBtnDec.classList.add('c-btn');
+                    counterBtnDec.onclick = () => changeQty(flower['flower_id'], -1);
+
+                    const counterNum = document.createElement('span');
+                    counterNum.classList.add('c-num');
+                    counterNum.id = `qty-${flower['flower_id']}`;
+                    counterNum.innerText = '1';
+
+                    const counterBtnInc = document.createElement('span');
+                    counterBtnInc.classList.add('c-btn');
+                    counterBtnInc.onclick = () => changeQty(flower['flower_id'], 1);
+
+                    counterOverlay.appendChild(counterBtnDec);
+                    counterOverlay.appendChild(counterNum);
+                    counterOverlay.appendChild(counterBtnInc);
+
+                    flowerImgContainer.appendChild(counterOverlay);
+
+                    const flowerContent = document.createElement('div');
+                    flowerContent.classList.add('content');
+
+                    const flowerName = document.createElement('h3');
+                    flowerName.classList.add('main-flower-name');
+                    flowerName.id = `name-${flower['flower_id']}`;
+                    flowerName.innerText = flower['flower_name'];
+
+                    const flowerPrice = document.createElement('p');
+                    flowerPrice.classList.add('price');
+                    flowerPrice.innerText = `${flower['price']} JD`;
+
+                    const flowerColorSelection = document.createElement('div');
+                    flowerColorSelection.classList.add('color-selection');
+
+
+                    const flowerBtn = document.createElement('button');
+                    flowerBtn.classList.add('btn');
+                    flowerBtn.onclick = () => addToCart(flower['flower_id']);
+                    flowerBtn.innerText = 'Add to Cart';
+
+                    flowerContent.appendChild(flowerName);
+                    flowerContent.appendChild(flowerPrice);
+                    flowerContent.appendChild(flowerColorSelection);
+                    flowerContent.appendChild(flowerBtn);
+
+                    flowerCard.appendChild(flowerHeartIcon);
+                    flowerCard.appendChild(flowerImgContainer);
+                    flowerCard.appendChild(flowerContent);
+
+                    document.querySelector('.flower-grid').appendChild(flowerCard);
+                });
+            };
+            fetchFlowers();
+        </script>
+
+        <script>
+            let currentLang = localStorage.getItem('bloomLang') || 'en';
+
+            function toggleLanguage() {
+                currentLang = (currentLang === 'en') ? 'ar' : 'en';
+                localStorage.setItem('bloomLang', currentLang);
+                applyLanguage(currentLang);
+            }
+
+            function applyLanguage(lang) {
+                document.getElementById('html-tag').setAttribute('lang', lang);
+                document.getElementById('langSwitcher').innerText = (lang === 'en') ? 'AR' : 'EN';
+                document.getElementById('site-logo').innerText = (lang === 'en') ? 'Bloom Store' : 'شغف';
+                document.getElementById('page-title').innerText = (lang === 'en') ? 'LET LOVE BLOOM' : 'دع الحب يزهر';
+
+                document.querySelectorAll('[data-en]').forEach(el => {
+                    el.innerText = el.getAttribute(`data-${lang}`);
+                });
+
+                document.body.classList.add('loaded');
+            }
+
+            function toggleMode() {
+                const body = document.body;
+                const checkbox = document.getElementById('checkbox');
+                if (checkbox.checked) {
+                    body.classList.add('light-mode');
+                    localStorage.setItem('theme', 'light');
+                } else {
+                    body.classList.remove('light-mode');
+                    localStorage.setItem('theme', 'dark');
+                }
+            }
+
+            function changeQty(id, delta) {
+                const q = document.getElementById('qty-' + id);
+                if (q) {
+                    let n = parseInt(q.innerText) + delta;
+                    if (n < 1) n = 1;
+                    q.innerText = n;
+                }
+            }
+
+            function changeFlower(event, fId, cId) {
+                const srcMapping = {
+                    'rose': { 'red': 'redrose.webp', 'white': 'whiterose.jpg', 'pink': 'pinkrose.jpeg', 'purple': 'puprlerose.jpg' },
+                    'tulip': { 'white': 'whitetulip.jpg', 'yellow': 'yellowtulip.jpg', 'pink': 'pinktulip.webp' },
+                    'lily': { 'white': 'whitelily.jpg', 'orange': 'orangelily.webp', 'pink': 'pinklily.webp' },
+                    'orchid': { 'purple': 'orchid.webp', 'white': 'whiteorchid.webp' },
+                    'gerbera': { 'red': 'redger.webp', 'orange': 'orangeger.webp' },
+                    'peony': { 'white': 'whitepeony.jpg', 'pink': 'pinkpeony (2).jpg' },
+                    'hydrangea': { 'blue': 'bluehydra.jpg', 'pink': 'pinkhydra.jpg' },
+                    'carnation': { 'pink': 'pinkcarn.jpg', 'red': 'redcarna.jpg' },
+                    'daisy': { 'pink': 'pinkdaisy.jpg', 'white': 'whitedaisy.jpg' },
+                    'chrysanthemum': { 'white': 'whitechry.jpg', 'yellow': 'yellowchry.jpg' },
+                    'wild': { 'purple': 'Lavender.jpg', 'blue': 'Blue Iris.jpg' },
+                    'unique': { 'yellow': 'sunflower.jpg', 'white': 'babybreath.jpg' }
+                };
+                const src = srcMapping[fId][cId];
+                document.getElementById('display-' + fId).src = src;
+                const dots = event.target.parentElement.querySelectorAll('.dot');
+                dots.forEach(d => d.classList.remove('active'));
+                event.target.classList.add('active');
+            }
+
+            function addToCart(fId) {
+                const qty = parseInt(document.getElementById('qty-' + fId).innerText);
+                const priceStr = document.querySelector(`#name-${fId}`).parentElement.querySelector('.price').innerText;
+                const price = parseFloat(priceStr);
+                const img = document.getElementById('display-' + fId).src;
+
+                let cart = JSON.parse(localStorage.getItem('bloomCart')) || [];
+                cart.push({ id: fId, price: price, quantity: qty, img: img });
+                localStorage.setItem('bloomCart', JSON.stringify(cart));
+
+                document.getElementById("toast").innerText = (currentLang === 'en' ? "Added to Cart!" : "تمت الإضافة للسلة!");
+                document.getElementById("toast").className = "show";
+                setTimeout(() => { document.getElementById("toast").className = ""; }, 3000);
+            }
+
+            function addToWishlist(fId, el) {
+                el.classList.toggle('fa-regular');
+                el.classList.toggle('fa-solid');
+                el.classList.toggle('active');
+
+                let wishlist = JSON.parse(localStorage.getItem('bloomWishlist')) || [];
+                const priceElement = document.querySelector(`#name-${fId}`).parentElement.querySelector('.price');
+                const priceStr = priceElement ? priceElement.innerText : "0";
+                const img = document.getElementById('display-' + fId).src;
+
+                if (el.classList.contains('fa-solid')) {
+                    if (!wishlist.some(item => item.id === fId)) {
+                        wishlist.push({ id: fId, price: parseFloat(priceStr), img: img });
+                    }
+                } else {
+                    wishlist = wishlist.filter(item => item.id !== fId);
+                }
+                localStorage.setItem('bloomWishlist', JSON.stringify(wishlist));
+            }
+
+            document.addEventListener("DOMContentLoaded", function () {
+                if (localStorage.getItem('theme') === 'light') {
+                    document.getElementById('checkbox').checked = true;
+                    document.body.classList.add('light-mode');
+                }
+                applyLanguage(currentLang);
+            });
+        </script>
+        <div id="toast">Added to Cart!</div>
+        <script src="chatbot.js"></script>
+</body>
+
+</html>

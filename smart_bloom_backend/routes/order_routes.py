@@ -10,7 +10,7 @@ VALID_STATUSES = {"Pending", "Processing", "Shipped", "Delivered", "Cancelled"}
 #HELPER: admin guard
 def require_admin():
     claims = get_jwt()
-    if claims.get("role") != "Admin":
+    if claims.get("role", "").lower() != "admin":  # normalize to lowercase
         return False, (jsonify({"error": "Admin access required"}), 403)
     return True, None
 
@@ -24,70 +24,83 @@ def get_order(order_id):
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
+        # 1) Get the order
         cursor.execute("""
-            SELECT 
-                o.OrderID,
-                o.OrderDate,
-                o.TotalPrice,
-                o.Status,           
-                o.PaymentMethod,    
-                od.FlowerID,
-                f.FlowerName,
-                od.Quantity,
-                od.Price,
-                f.ImageURL
-            FROM Orders o
-            JOIN Order_Details od ON o.OrderID = od.OrderID
+            SELECT OrderID, OrderDate, TotalPrice, PaymentMethod, UserID
+            FROM Orders
+            WHERE OrderID = ?
+        """, (order_id,))
+        order_row = cursor.fetchone()
+
+        if not order_row:
+            return jsonify({"error": "Order not found"}), 404
+
+        if int(order_row[4]) != current_user_id:
+            return jsonify({"error": "Access denied"}), 403
+
+        # 2) Get order items
+        cursor.execute("""
+            SELECT
+                od.FlowerID,      
+                f.FlowerName,     
+                od.Quantity,      
+                od.Price,         
+                f.ImageURL        
+            FROM Order_Details od
             JOIN Flower f ON od.FlowerID = f.FlowerID
-            WHERE o.OrderID = ? AND o.UserID = ?
-        """, (order_id, current_user_id))
+            WHERE od.OrderID = ?
+        """, (order_id,))
         rows = cursor.fetchall()
 
-        if not rows:
-            return jsonify({"error": "Order not found or access denied"}), 404
-
         order_data = {
-            "order_id":      rows[0][0],
-            "order_date":    rows[0][1].strftime("%Y-%m-%d %H:%M:%S") if rows[0][1] else None,
-            "total_price":   round(float(rows[0][2]), 2),
-            "status":        rows[0][3],       
-            "payment_method": rows[0][4],      
+            "order_id": order_row[0],
+            "order_date": order_row[1].strftime("%Y-%m-%d %H:%M:%S") if order_row[1] else None,
+            "total_price": round(float(order_row[2]), 2),
+            "payment_method": order_row[3],
             "items": []
         }
+
         for row in rows:
+            flower_id = row[0]
+            flower_name = row[1]
+            quantity = int(row[2]) if row[2] is not None else 0
+            price = float(row[3]) if row[3] is not None else 0.0
+            image_url = row[4]
+
             order_data["items"].append({
-                "flower_id":   row[5],
-                "flower_name": row[6],
-                "quantity":    row[7],
-                "price":       round(float(row[8]), 2),
-                "item_total":  round(float(row[7] * row[8]), 2),
-                "image_url":   row[9]
+                "flower_id": flower_id,
+                "flower_name": flower_name,
+                "quantity": quantity,
+                "price": round(price, 2),
+                "item_total": round(quantity * price, 2),
+                "image_url": image_url
             })
+
         return jsonify(order_data), 200
 
     except Exception as e:
-        return jsonify({"error": "Could not retrieve order"}), 500
+        return jsonify({
+            "error": "Could not retrieve order",
+            "details": str(e)
+        }), 500
     finally:
         cursor.close()
         conn.close()
-
-
 #GET USER ORDER HISTORY 
 @order_bp.route("/my/orders", methods=["GET"])
 @jwt_required()
 def get_user_orders():
     current_user_id = int(get_jwt_identity())
 
-    #Pagination
-    page     = request.args.get("page", 1, type=int)
+    page = request.args.get("page", 1, type=int)
     per_page = request.args.get("per_page", 10, type=int)
-    offset   = (page - 1) * per_page
+    offset = (page - 1) * per_page
 
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
         cursor.execute("""
-            SELECT OrderID, OrderDate, TotalPrice, Status, PaymentMethod
+            SELECT OrderID, OrderDate, TotalPrice, PaymentMethod
             FROM Orders
             WHERE UserID = ?
             ORDER BY OrderDate DESC
@@ -98,24 +111,26 @@ def get_user_orders():
         orders = []
         for row in rows:
             orders.append({
-                "order_id":       row[0],
-                "order_date":     row[1].strftime("%Y-%m-%d %H:%M:%S") if row[1] else None,
-                "total_price":    round(float(row[2]), 2),
-                "status":         row[3],       
-                "payment_method": row[4]        
+                "order_id": row[0],
+                "order_date": row[1].strftime("%Y-%m-%d %H:%M:%S") if row[1] else None,
+                "total_price": round(float(row[2]), 2),
+                "payment_method": row[3]
             })
+
         return jsonify({
-            "page":    page,
+            "page": page,
             "per_page": per_page,
-            "orders":  orders
+            "orders": orders
         }), 200
 
     except Exception as e:
-        return jsonify({"error": "Could not retrieve orders"}), 500
+        return jsonify({
+            "error": "Could not retrieve orders",
+            "details": str(e)
+        }), 500
     finally:
         cursor.close()
         conn.close()
-
 
 # CANCEL ORDER (user cancels own order)
 @order_bp.route("/orders/<int:order_id>/cancel", methods=["PUT"])
@@ -126,7 +141,6 @@ def cancel_order(order_id):
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        # Verify ownership and check current status
         cursor.execute("""
             SELECT Status FROM Orders
             WHERE OrderID = ? AND UserID = ?
@@ -141,7 +155,6 @@ def cancel_order(order_id):
                 "error": f"Cannot cancel an order with status '{row[0]}'"
             }), 400
 
-        # Restore stock for all items in the order
         cursor.execute("""
             UPDATE f
             SET f.Stock = f.Stock + od.Quantity
@@ -151,7 +164,8 @@ def cancel_order(order_id):
         """, (order_id,))
 
         cursor.execute("""
-            UPDATE Orders SET Status = 'Cancelled'
+            UPDATE Orders
+            SET Status = 'Cancelled'
             WHERE OrderID = ?
         """, (order_id,))
 
@@ -160,11 +174,13 @@ def cancel_order(order_id):
 
     except Exception as e:
         conn.rollback()
-        return jsonify({"error": "Could not cancel order"}), 500
+        return jsonify({
+            "error": "Could not cancel order",
+            "details": str(e)
+        }), 500
     finally:
         cursor.close()
         conn.close()
-
 
 #ADMIN: VIEW ALL ORDERS 
 @order_bp.route("/admin/orders", methods=["GET"])
