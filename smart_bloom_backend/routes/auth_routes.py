@@ -84,24 +84,43 @@ def login():
 
     conn = get_db_connection()
     cursor = conn.cursor()
+
     try:
         cursor.execute("""
             SELECT UserID, Role, Password
             FROM Users
             WHERE Email = ?
-        """, (data["email"],))          # fetch by email only verify hash in Python
+        """, (data["email"],))
         user = cursor.fetchone()
 
-        # Use a generic message to avoid user enumeration
-        if not user or not check_password_hash(user[2], data["password"]):
+        if not user:
             return jsonify({"error": "Invalid credentials"}), 401
 
-        user_id, role = user[0], user[1]
+        user_id, role, stored_password = user[0], user[1], user[2]
 
-        access_token  = create_access_token(
+        password_ok = False
+
+        if stored_password.startswith("pbkdf2:") or stored_password.startswith("scrypt:"):
+            password_ok = check_password_hash(stored_password, data["password"])
+        else:
+            if stored_password == data["password"]:
+                password_ok = True
+
+                new_hashed_password = generate_password_hash(data["password"])
+                cursor.execute("""
+                    UPDATE Users
+                    SET Password = ?
+                    WHERE UserID = ?
+                """, (new_hashed_password, user_id))
+                conn.commit()
+
+        if not password_ok:
+            return jsonify({"error": "Invalid credentials"}), 401
+
+        access_token = create_access_token(
             identity=str(user_id),
             additional_claims={"role": role},
-            expires_delta= datetime.timedelta(minutes=120)
+            expires_delta=datetime.timedelta(minutes=120)
         )
         refresh_token = create_refresh_token(identity=str(user_id))
 
@@ -112,7 +131,8 @@ def login():
         }), 200
 
     except Exception as e:
-        return jsonify({"error": "Login failed"}), 500  
+        return jsonify({"error": "Login failed", "details": str(e)}), 500
+
     finally:
         cursor.close()
         conn.close()

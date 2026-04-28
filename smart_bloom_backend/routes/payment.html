@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en" id="html-tag">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bloom Store | Secure Checkout</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Cinzel:wght@400;600;700&family=Montserrat:wght@300;400;500;600;700;800&family=Cairo:wght@200;300;400;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="chatbot.css">
+
+    <style>
+        :root {
+            --bg-body: #020202; --text-main: #ffffff; --accent: #2ecc71;
+            --glass: rgba(255, 255, 255, 0.05); --card-border: rgba(255, 255, 255, 0.1);
+            --header-h: 85px; --emerald-glow: rgba(46, 204, 113, 0.4);
+        }
+
+        body.light-mode {
+            --bg-body: #f8f9fa; --text-main: #1a1a1a;
+            --glass: rgba(0, 0, 0, 0.03); --card-border: rgba(0, 0, 0, 0.12);
+            --emerald-glow: rgba(46, 204, 113, 0.15);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            opacity: 0; transition: opacity 0.4s ease, background 0.6s;
+            background: var(--bg-body); color: var(--text-main);
+            font-family: 'Cormorant Garamond', serif; overflow-x: hidden;
+            line-height: 1.6;
+        }
+
+        body.loaded { opacity: 1; }
+
+        /* --- Header: الدستور الموحد الصارم --- */
+        header {
+            position: fixed; top: 0; width: 100%; height: var(--header-h); padding: 0 60px;
+            display: flex; justify-content: space-between; align-items: center;
+            z-index: 1000; background: var(--glass); backdrop-filter: blur(15px);
+            border-bottom: 1px solid var(--card-border);
+        }
+
+        .logo { 
+            font-family: 'Great Vibes', cursive !important; 
+            font-size: 42px !important; 
+            color: var(--text-main); 
+            text-decoration: none; 
+            transition: 0.4s;
+        }
+        .logo:hover { text-shadow: 0 0 15px var(--accent); color: var(--accent); }
+
+        .nav-right { display: flex; align-items: center; gap: 30px; }
+        nav ul { display: flex; list-style: none; gap: 25px; align-items: center; }
+        
+        nav ul li a { 
+            text-decoration: none; color: var(--text-main); 
+            font-family: 'Cormorant Garamond', serif !important;
+            font-size: 14px; text-transform: uppercase; letter-spacing: 2px; font-weight: 700; 
+            transition: 0.3s; position: relative; padding: 5px 0;
+        }
+        nav ul li a::after {
+            content: ''; position: absolute; bottom: 0; left: 50%; width: 0; height: 1px;
+            background: var(--accent); transition: 0.3s; transform: translateX(-50%);
+        }
+        nav ul li a:hover::after { width: 100%; }
+        nav ul li a:hover { color: var(--accent); }
+
+        /* العربي حسب الدستور (شغف Cairo 200) */
+        [lang="ar"] { direction: rtl; font-family: 'Cairo', sans-serif; }
+        [lang="ar"] header { font-family: 'Cairo', sans-serif !important; }
+        [lang="ar"] .logo { font-family: 'Cairo', sans-serif !important; font-weight: 200 !important; font-size: 34px !important; }
+        [lang="ar"] nav ul li a { font-family: 'Cairo', sans-serif !important; font-size: 17px !important; font-weight: 300 !important; letter-spacing: 0; }
+        [lang="ar"] .lang-btn { font-family: 'Cairo', sans-serif; font-size: 12px; }
+
+        /* أدوات التحكم */
+        .profile-link { color: var(--text-main); font-size: 20px; transition: 0.3s; opacity: 0.8; text-decoration: none; }
+        .profile-link:hover { color: var(--accent); opacity: 1; }
+
+        .lang-btn { background: none; border: 1px solid var(--card-border); color: var(--text-main); padding: 5px 15px; border-radius: 20px; cursor: pointer; font-size: 10px; text-transform: uppercase; transition: 0.3s; opacity: 0.8; }
+        
+        .theme-switch { display: inline-block; height: 22px; position: relative; width: 48px; margin-left: 10px; }
+        .theme-switch input { display: none; }
+        .slider { background-color: #1a3a2e; bottom: 0; cursor: pointer; left: 0; position: absolute; right: 0; top: 0; transition: .4s; border-radius: 34px; border: 1px solid var(--card-border); }
+        .slider:before { background-color: #fff; bottom: 3px; content: ""; height: 14px; left: 4px; position: absolute; transition: .4s; width: 14px; border-radius: 50%; z-index: 5; }
+        input:checked + .slider { background-color: #bdc3c7; } 
+        input:checked + .slider:before { transform: translateX(25px); }
+        .slider i { position: absolute; top: 5px; font-size: 10px; z-index: 1; }
+        .fa-moon { left: 8px; color: #fff; } .fa-sun { right: 8px; color: #1a1a1a; opacity: 0; }
+        input:checked + .slider .fa-sun { opacity: 1; }
+
+        /* --- باقي محتوى الصفحة --- */
+        .payment-wrapper { padding: 140px 60px 50px; max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: 1.8fr 1fr; gap: 50px; }
+        .section-box { background: var(--glass); padding: 35px; border-radius: 15px; border: 1px solid var(--card-border); margin-bottom: 30px; backdrop-filter: blur(20px); }
+        h2 { font-family: 'Cinzel', serif; font-size: 0.95rem; letter-spacing: 4px; margin-bottom: 30px; border-bottom: 1px solid var(--card-border); padding-bottom: 15px; text-transform: uppercase; font-weight: 700; }
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; }
+        .full-width { grid-column: span 2; }
+        .input-group { display: flex; flex-direction: column; gap: 10px; }
+        label { font-size: 0.75rem; text-transform: uppercase; font-weight: 700; letter-spacing: 1.5px; }
+        input, select, textarea { padding: 14px; background: rgba(0, 0, 0, 0.05); border: 1px solid var(--card-border); border-radius: 6px; color: var(--text-main); outline: none; transition: 0.4s; font-family: 'Montserrat', sans-serif; font-size: 0.85rem; font-weight: 600; }
+        input:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 15px var(--emerald-glow); }
+        .payment-methods { display: flex; flex-direction: column; gap: 15px; }
+        .method-option { display: flex; align-items: center; gap: 15px; padding: 20px; border: 1px solid var(--card-border); border-radius: 12px; cursor: pointer; transition: 0.3s; background: rgba(255, 255, 255, 0.02); }
+        .method-option:hover { border-color: var(--accent); background: rgba(46, 204, 113, 0.05); }
+        .method-option span { font-size: 0.9rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+        .gift-box-container { border: 2px dashed var(--accent); padding: 20px; border-radius: 15px; margin-top: 10px; background: rgba(46, 204, 113, 0.02); position: relative; }
+        #save-status { font-size: 0.8rem; color: var(--accent); display: none; margin-left: 10px; animation: scaleIn 0.3s ease; }
+        @keyframes scaleIn { from { transform: scale(0); } to { transform: scale(1); } }
+        .card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 20px; }
+        .card-option { cursor: pointer; text-align: center; }
+        .card-option input { display: none; }
+        .card-img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 10px; border: 3px solid transparent; transition: 0.3s; opacity: 0.7; }
+        .card-option input:checked+.card-img { border-color: var(--accent); opacity: 1; transform: scale(1.05); }
+        .card-name { font-size: 0.65rem; display: block; margin-top: 8px; font-weight: 700; text-transform: uppercase; }
+        .summary-side { position: sticky; top: 130px; height: fit-content; }
+        .summary-item { display: flex; justify-content: space-between; margin-bottom: 15px; font-size: 0.95rem; font-weight: 700; }
+        .total-price-box { font-family: 'Cinzel', serif; font-size: 1.5rem; font-weight: 700; color: var(--accent); border-top: 2px solid var(--card-border); margin-top: 25px; padding-top: 25px; display: flex; justify-content: space-between; }
+        .btn-order { width: 100%; padding: 20px; background: var(--text-main); color: var(--bg-body); border: none; border-radius: 8px; font-weight: 800; text-transform: uppercase; letter-spacing: 4px; cursor: pointer; transition: 0.5s; margin-top: 30px; font-size: 0.9rem; }
+        .btn-order:hover { background: var(--accent); color: #000; box-shadow: 0 0 30px var(--emerald-glow); transform: translateY(-2px); }
+
+        @media (max-width: 900px) { .payment-wrapper { grid-template-columns: 1fr; padding: 120px 20px; } }
+    </style>
+</head>
+
+<body>
+    <script>
+        (function preLoad() { if (localStorage.getItem('theme') === 'light') { document.body.classList.add('light-mode'); } })();
+    </script>
+
+    <header>
+        <a href="index.html" class="logo" id="site-logo">Bloom Store</a>
+        <div class="nav-right">
+            <nav>
+                <ul id="nav-menu">
+                    <li><a href="firstpage.html" data-en="Home" data-ar="الرئيسية">Home</a></li>
+                    <li><a href="shop.html" data-en="Shop" data-ar="المتجر">Shop</a></li>
+                    <li><a href="wishlist.html" data-en="Wishlist" data-ar="المفضلة">Wishlist</a></li>
+                    <li><a href="cart.html" data-en="Cart" data-ar="السلة">Cart</a></li>
+                </ul>
+            </nav>
+            <div style="display: flex; align-items: center; gap: 20px;">
+                <a href="profile.html" class="profile-link" id="profile-icon"><i class="fas fa-user"></i></a>
+                <label class="theme-switch">
+                    <input type="checkbox" id="checkbox" onclick="toggleMode()" />
+                    <div class="slider"><i class="fas fa-moon"></i><i class="fas fa-sun"></i></div>
+                </label>
+                <button class="lang-btn" onclick="toggleLanguage()" id="langSwitcher">AR</button>
+            </div>
+        </div>
+    </header>
+
+    <div class="payment-wrapper">
+        <div class="main-side">
+            <div class="section-box">
+                <h2 id="title-shipping">1. Shipping Details</h2>
+                <form class="form-grid">
+                    <div class="input-group"><label id="label-fn">First Name</label><input type="text" id="input-fn" required></div>
+                    <div class="input-group"><label id="label-ln">Last Name</label><input type="text" id="input-ln" required></div>
+                    <div class="input-group full-width"><label id="label-addr">Full Address</label><input type="text" id="input-addr" required></div>
+                    <div class="input-group"><label id="label-city">City</label>
+                        <select id="input-city">
+                            <option value="Amman">Amman</option>
+                            <option value="Zarqa">Zarqa</option>
+                            <option value="Salt">Al-Salt</option>
+                            <option value="Mafraq">Mafraq</option>
+                        </select>
+                    </div>
+                    <div class="input-group"><label id="label-phone">Mobile Number</label><input type="tel" id="input-phone" required></div>
+
+                    <div class="input-group full-width">
+                        <div class="gift-box-container">
+                            <label style="display:flex; align-items:center; cursor:pointer;">
+                                <input type="checkbox" onchange="document.getElementById('card-section').style.display = this.checked ? 'block' : 'none'" style="width:18px; height:18px; accent-color:var(--accent);">
+                                <span id="label-gift-toggle" style="font-weight:700; font-size:0.9rem; margin-left: 10px;">Add a Gift Card message?</span>
+                                <span id="save-status"><i class="fas fa-check-circle"></i> <small data-en="Saved" data-ar="تم الحفظ">Saved</small></span>
+                            </label>
+                            <div id="card-section" style="display:none; margin-top:20px; border-top:1px solid var(--card-border); padding-top:20px;">
+                                <div class="card-grid">
+                                    <label class="card-option"><input type="radio" name="card" checked onchange="showSaved()"><img src="simple.jpg" class="card-img"><span id="name-sada" class="card-name">Minimalist</span></label>
+                                    <label class="card-option"><input type="radio" name="card" onchange="showSaved()"><img src="birthdayjpg.jpg" class="card-img"><span id="name-birthday" class="card-name">Birthday</span></label>
+                                    <label class="card-option"><input type="radio" name="card" onchange="showSaved()"><img src="modern.jpg" class="card-img"><span id="name-love" class="card-name">Love</span></label>
+                                </div>
+                                <textarea id="gift-msg" onblur="showSaved()"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <div class="section-box">
+                <h2 id="title-payment">2. Payment Selection</h2>
+                <div class="payment-methods">
+                    <label class="method-option"><input type="radio" name="pay" checked style="accent-color:var(--accent);"> <i class="fas fa-credit-card"></i> <span id="text-card">Credit / Debit Card</span></label>
+                    <label class="method-option"><input type="radio" name="pay" style="accent-color:var(--accent);"> <i class="fas fa-money-bill-wave"></i> <span id="text-cod">Cash on Delivery</span></label>
+                </div>
+            </div>
+        </div>
+
+        <div class="summary-side">
+            <div class="section-box">
+                <h2 id="title-summary">Summary</h2>
+                <div id="itemsPreview"></div>
+                <div class="summary-item"><span id="text-sub">Subtotal</span><span id="subtotal">0.00 JD</span></div>
+                <div class="summary-item"><span id="text-delivery">Delivery</span><span>2.00 JD</span></div>
+                <div class="total-price-box"><span id="text-total">Total</span><span id="finalTotal">0.00 JD</span></div>
+                <button class="btn-order" id="btn-place-order" onclick="checkout()" data-en="Place Order" data-ar="إتمام الطلب">Place Order</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentLang = localStorage.getItem('bloomLang') || 'en';
+
+        function checkout(){// this is sudocode pls implement
+            var paymentMethod = getSelectedPaymentMethod();
+            getuserInputAdress()
+            getCartItems()// [flower_id, quantity]
+            authCall("POST", "/checkout", {paymentMethod: paymentMethod, order: cartItems})
+            authFetch("/checkout", {
+                method: "POST", 
+                body: JSON.stringify(
+                 {   
+                    paymentMethod: paymentMethod,
+                    adress,
+                    items: cartItems
+                }
+                )
+            })
+            window.location.href='thankyou.html'
+
+        }
+        function showSaved() {
+            const status = document.getElementById('save-status');
+            const msg = document.getElementById('gift-msg').value;
+            if (msg.trim().length > 0) {
+                status.style.display = 'inline-block';
+                setTimeout(() => { status.style.opacity = '0.5'; }, 2000);
+            }
+        }
+
+        const productTranslations = { "chrysanthemum": "أقحوان", "lily": "زنبق", "rose": "جوري", "tulip": "توليب", "orchid": "أوركيد", "gerbera": "جيربيرا", "peony": "بيوني", "hydrangea": "هيدرانجيا", "carnation": "قرنفل", "daisy": "أقحوان", "wild": "زهور برية", "unique": "نادر" };
+
+        function applyLanguage(lang) {
+            document.getElementById('html-tag').setAttribute('lang', lang);
+            document.getElementById('langSwitcher').innerText = lang === 'en' ? 'AR' : 'EN';
+            document.getElementById('site-logo').innerText = lang === 'en' ? 'Bloom Store' : 'شغف';
+
+            const trans = {
+                en: {
+                    ship: "1. Shipping Details", fn: "First Name", ln: "Last Name", addr: "Full Address",
+                    city: "City", phone: "Mobile Number", pay: "2. Payment Selection", card: "Credit / Debit Card",
+                    cod: "Cash on Delivery", summ: "Summary", sub: "Subtotal", del: "Delivery",
+                    tot: "Total", giftToggle: "Add a Gift Card message?", minimalist: "Minimalist",
+                    birthday: "Birthday", love: "Love", placeholderFn: "e.g. Hana", placeholderLn: "e.g. Ahmad",
+                    placeholderAddr: "Street, Building, Apartment", placeholderPhone: "07XXXXXXXX", placeholderGift: "Type your message here...",
+                    cities: ["Amman", "Zarqa", "Al-Salt", "Mafraq"], saved: "Saved"
+                },
+                ar: {
+                    ship: "1. تفاصيل الشحن", fn: "الاسم الأول", ln: "اسم العائلة", addr: "العنوان بالكامل",
+                    city: "المدينة", phone: "رقم الموبايل", pay: "2. طريقة الدفع", card: "بطاقة ائتمان / دفع إلكتروني",
+                    cod: "الدفع عند الاستلام", summ: "ملخص الطلب", sub: "المجموع الفرعي", del: "توصيل",
+                    tot: "المجموع الكلي", giftToggle: "إضافة بطاقة إهداء مع الطلب؟", minimalist: "رقيقة",
+                    birthday: "عيد ميلاد", love: "حب", placeholderFn: "مثال: هناء", placeholderLn: "مثال: أحمد",
+                    placeholderAddr: "اسم الشارع، البناية، رقم الشقة", placeholderPhone: "٠٧XXXXXXXX", placeholderGift: "اكتب رسالتك هنا...",
+                    cities: ["عمان", "الزرقاء", "السلط", "المفرق"], saved: "تم الحفظ"
+                }
+            };
+
+            const l = trans[lang];
+            document.getElementById('title-shipping').innerText = l.ship;
+            document.getElementById('label-fn').innerText = l.fn;
+            document.getElementById('label-ln').innerText = l.ln;
+            document.getElementById('label-addr').innerText = l.addr;
+            document.getElementById('label-city').innerText = l.city;
+            document.getElementById('label-phone').innerText = l.phone;
+            document.getElementById('label-gift-toggle').innerText = l.giftToggle;
+            document.getElementById('name-sada').innerText = l.minimalist;
+            document.getElementById('name-birthday').innerText = l.birthday;
+            document.getElementById('name-love').innerText = l.love;
+            document.getElementById('title-payment').innerText = l.pay;
+            document.getElementById('text-card').innerText = l.card;
+            document.getElementById('text-cod').innerText = l.cod;
+            document.getElementById('title-summary').innerText = l.summ;
+            document.getElementById('text-sub').innerText = l.sub;
+            document.getElementById('text-delivery').innerText = l.del;
+            document.getElementById('text-total').innerText = l.tot;
+            document.getElementById('input-fn').placeholder = l.placeholderFn;
+            document.getElementById('input-ln').placeholder = l.placeholderLn;
+            document.getElementById('input-addr').placeholder = l.placeholderAddr;
+            document.getElementById('input-phone').placeholder = l.placeholderPhone;
+            document.getElementById('gift-msg').placeholder = l.placeholderGift;
+            document.querySelector('#save-status small').innerText = l.saved;
+
+            const citySel = document.getElementById('input-city');
+            Array.from(citySel.options).forEach((opt, i) => opt.text = l.cities[i]);
+            document.querySelectorAll('[data-en]').forEach(el => el.innerText = el.getAttribute(`data-${lang}`));
+            loadOrderData(); document.body.classList.add('loaded');
+        }
+
+        function toggleLanguage() { currentLang = (currentLang === 'en') ? 'ar' : 'en'; localStorage.setItem('bloomLang', currentLang); applyLanguage(currentLang); }
+
+        function loadOrderData() {
+            const cart = JSON.parse(localStorage.getItem('bloomCart')) || [];
+            let total = 0; const preview = document.getElementById('itemsPreview'); preview.innerHTML = '';
+            cart.forEach(item => {
+                const itemTotal = parseFloat(item.price) * item.quantity; total += itemTotal;
+                let searchName = item.id.toLowerCase();
+                let displayName = item.id.toUpperCase();
+                if (currentLang === 'ar' && productTranslations[searchName]) { displayName = productTranslations[searchName]; }
+                preview.innerHTML += `<div style="display:flex; justify-content:space-between; margin-bottom:10px; font-size:0.9rem; font-weight:700;"><span>• ${displayName} (x${item.quantity})</span><span>${itemTotal.toFixed(2)} JD</span></div>`;
+            });
+            document.getElementById('subtotal').innerText = total.toFixed(2) + " JD";
+            document.getElementById('finalTotal').innerText = (total > 0 ? (total + 2).toFixed(2) : "0.00") + " JD";
+        }
+
+        function toggleMode() {
+            const body = document.body;
+            if (body.classList.contains('light-mode')) { body.classList.remove('light-mode'); localStorage.setItem('theme', 'dark'); }
+            else { body.classList.add('light-mode'); localStorage.setItem('theme', 'light'); }
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            if (localStorage.getItem('theme') === 'light') document.getElementById('checkbox').checked = true;
+            applyLanguage(currentLang);
+        });
+    </script>
+</body>
+
+</html>
